@@ -46,8 +46,9 @@ pub fn parse_result(line: &str) -> ModemResult {
     }
 }
 
-/// 受信データを行ごとに取り出す
+/// 受信データを行ごとに取り出す (受け取った行はシステムログに残す)
 struct Lines {
+    no: u16,
     buf: String,
 }
 
@@ -60,6 +61,7 @@ impl Lines {
                 let line = self.buf[..i].trim().to_string();
                 self.buf.drain(..=i);
                 if !line.is_empty() {
+                    tracing::info!("CH{:02}: ← {line}", self.no);
                     return Ok(Some(line));
                 }
                 continue;
@@ -84,6 +86,10 @@ impl Lines {
 }
 
 async fn send(conn: &Conn, s: &str) -> Result<()> {
+    let shown = s.trim();
+    if !shown.is_empty() {
+        tracing::info!("CH{:02}: → {shown}", conn.info.no);
+    }
     conn.tx.send(OutCmd::Write(s.as_bytes().to_vec())).await.map_err(|_| anyhow::anyhow!("ポートが閉じられました"))
 }
 
@@ -123,7 +129,7 @@ pub async fn run(cfg: ModemConfig, ctx: Arc<Ctx>, stop: CancellationToken) {
 
 async fn line_loop(cfg: &ModemConfig, ctx: &Ctx, conn: &mut Conn, watch: &CarrierWatch, info: &Arc<LineInfo>) -> Result<()> {
     let no = cfg.line;
-    let mut lines = Lines { buf: String::new() };
+    let mut lines = Lines { no, buf: String::new() };
     loop {
         ctx.hub.set_state(no, LineState::Init);
         ctx.hub.set_note(no, "");
@@ -260,7 +266,7 @@ mod tests {
         let (mut conn, tx, _out) = Conn::pair(LineInfo::new(1, LineKind::Modem, "x"));
         tx.send(InEvent::Data(b"\r\nRI".to_vec())).await.unwrap();
         tx.send(InEvent::Data(b"NG\r\n\r\nCONNECT 2400\r".to_vec())).await.unwrap();
-        let mut l = Lines { buf: String::new() };
+        let mut l = Lines { no: 1, buf: String::new() };
         let w = Duration::from_millis(100);
         assert_eq!(l.next(&mut conn, w).await.unwrap().as_deref(), Some("RING"));
         assert_eq!(l.next(&mut conn, w).await.unwrap().as_deref(), Some("CONNECT 2400"));

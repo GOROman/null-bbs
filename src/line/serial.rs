@@ -156,6 +156,7 @@ pub fn open(cfg: &ModemConfig, info: Arc<LineInfo>) -> Result<(Conn, CarrierWatc
                 OutCmd::Hangup => {
                     info.abort.store(false, Ordering::Relaxed);
                     if hangup == "escape" {
+                        tracing::info!("CH{no:02}: → +++ / ATH0 (回線を切ります)");
                         thread::sleep(Duration::from_millis(1200));
                         let _ = writer.write_all(b"+++");
                         let _ = writer.flush();
@@ -164,6 +165,7 @@ pub fn open(cfg: &ModemConfig, info: Arc<LineInfo>) -> Result<(Conn, CarrierWatc
                         let _ = writer.flush();
                     } else {
                         // DTR を落とすと &D2 のモデムは回線を切る
+                        tracing::info!("CH{no:02}: DTR OFF (回線を切ります)");
                         let _ = writer.write_data_terminal_ready(false);
                         thread::sleep(Duration::from_millis(600));
                         let _ = writer.write_data_terminal_ready(true);
