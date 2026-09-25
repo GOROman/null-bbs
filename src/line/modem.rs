@@ -188,10 +188,10 @@ async fn init_modem(cfg: &ModemConfig, conn: &mut Conn, lines: &mut Lines) -> Re
         if !ok {
             bail!("モデムが応答しません ({cmd})");
         }
-        // ATZ の後はモデムが落ち着くまで少し待つ
-        if cmd.to_ascii_uppercase().starts_with("ATZ") {
-            tokio::time::sleep(Duration::from_millis(500)).await;
-        }
+        // OK の直後に次のコマンドを送ると、モデムが先頭の文字を取りこぼして化ける。
+        // 少し間を置く (リセット系のコマンドの後は長めに)
+        let reset = ["ATZ", "AT&F"].iter().any(|p| cmd.to_ascii_uppercase().starts_with(p));
+        tokio::time::sleep(Duration::from_millis(if reset { 1000 } else { 200 })).await;
     }
     Ok(())
 }
@@ -209,6 +209,7 @@ async fn wait_call(cfg: &ModemConfig, ctx: &Ctx, conn: &mut Conn, lines: &mut Li
         let line = lines.next(conn, Duration::from_secs(1)).await?;
         if answered_at.is_none() && ctx.hub.take_answer_request(no) {
             tracing::info!("CH{no:02}: 管理画面の指示で応答します");
+            tokio::time::sleep(Duration::from_millis(300)).await;
             send(conn, "ATA\r").await?;
             answered_at = Some(Instant::now());
             ctx.hub.set_state(no, LineState::Connecting);
@@ -232,7 +233,14 @@ async fn wait_call(cfg: &ModemConfig, ctx: &Ctx, conn: &mut Conn, lines: &mut Li
                 last_ring = Some(Instant::now());
                 ctx.hub.set_state(no, LineState::Ringing);
                 ctx.hub.set_note(no, &format!("RING x{rings}"));
-                if manual && answered_at.is_none() && rings >= cfg.rings.max(1) {
+                // ATA の後にまた RING が来たら、ATA が受け付けられていないので送り直す
+                let retry = manual && answered_at.is_some();
+                if manual && (retry || rings >= cfg.rings.max(1)) {
+                    if retry {
+                        tracing::info!("CH{no:02}: ATA が受け付けられなかったので送り直します");
+                    }
+                    // RING の直後に送るとモデムが取りこぼすので少し待つ
+                    tokio::time::sleep(Duration::from_millis(300)).await;
                     send(conn, "ATA\r").await?;
                     answered_at = Some(Instant::now());
                     ctx.hub.set_state(no, LineState::Connecting);
