@@ -1,0 +1,6 @@
+/target
+*.db
+*.db-*
+*.log
+/files
+/null-bbs.toml

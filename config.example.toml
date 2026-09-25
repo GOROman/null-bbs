@@ -1,0 +1,36 @@
+# NULL BBS 設定例 (null-bbs.toml にコピーして使う)
+
+[bbs]
+name = "NULL-BBS"
+db = "null-bbs.db"
+text_dir = "text"          # banner.txt / goodbye.txt ({name} は BBS 名に置き換え)
+files_dir = "files"        # ファイルライブラリの保存先
+max_upload_kb = 4096
+max_lines = 128
+allow_guest = true
+chat_log = false
+log_file = "null-bbs.log"
+
+[limits]
+idle_timeout_secs = 300
+max_session_mins = 60
+guest_session_mins = 15
+login_attempts = 3
+
+[tcp]
+# telnet は平文なので、外部に公開するときは注意
+listen = ["127.0.0.1:2323"]
+
+# モデム回線 (必要な数だけ書く)
+# [[modem]]
+# line = 1                          # 回線番号 (1〜max_lines)
+# path = "/dev/cu.usbserial-XXXX"
+# baud = 9600                       # DTE 速度
+# flow = "hardware"                 # none / hardware / software
+# init = ["ATZ", "ATE0V1Q0X4&C1&D2S0=0"]
+# answer = "manual"                 # manual: RING で ATA / auto: モデムの自動着信 (S0=1)
+# rings = 1
+# connect_timeout_secs = 60
+# connect_delay_ms = 500
+# carrier = "both"                  # dcd / text ("NO CARRIER") / both
+# hangup = "dtr"                    # dtr / escape (+++ATH0)
