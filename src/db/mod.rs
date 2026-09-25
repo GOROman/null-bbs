@@ -19,9 +19,16 @@ pub struct Db {
     tx: mpsc::Sender<Job>,
 }
 
-const MIGRATIONS: &[&str] = &[
-    include_str!("../../migrations/001_init.sql"),
-    include_str!("../../migrations/002_files.sql"),
+enum Migration {
+    Sql(&'static str),
+    Code(fn(&Connection) -> Result<()>),
+}
+
+const MIGRATIONS: &[Migration] = &[
+    Migration::Sql(include_str!("../../migrations/001_init.sql")),
+    Migration::Sql(include_str!("../../migrations/002_files.sql")),
+    // 会員番号の振り直し (ゲスト 0 / SYSOP 1 / 2〜9 予約 / 会員 10〜)
+    Migration::Code(repo::renumber_users),
 ];
 
 impl Db {
@@ -77,15 +84,20 @@ impl Db {
 
 fn setup(conn: &mut Connection) -> Result<()> {
     conn.pragma_update(None, "journal_mode", "WAL")?;
-    conn.pragma_update(None, "foreign_keys", "ON")?;
     conn.busy_timeout(std::time::Duration::from_secs(5))?;
+    // 番号の付け替えがあるので、マイグレーション中は外部キーの検査を止める
+    conn.pragma_update(None, "foreign_keys", "OFF")?;
     let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0))?;
-    for (i, sql) in MIGRATIONS.iter().enumerate().skip(version as usize) {
+    for (i, m) in MIGRATIONS.iter().enumerate().skip(version as usize) {
         let tx = conn.transaction()?;
-        tx.execute_batch(sql)?;
+        match m {
+            Migration::Sql(sql) => tx.execute_batch(sql)?,
+            Migration::Code(f) => f(&tx)?,
+        }
         tx.pragma_update(None, "user_version", i as i64 + 1)?;
         tx.commit()?;
     }
+    conn.pragma_update(None, "foreign_keys", "ON")?;
     repo::ensure_defaults(conn)?;
     Ok(())
 }

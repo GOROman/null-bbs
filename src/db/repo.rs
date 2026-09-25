@@ -7,6 +7,11 @@ pub const LEVEL_GUEST: i64 = 0;
 pub const LEVEL_MEMBER: i64 = 10;
 pub const LEVEL_SYSOP: i64 = 100;
 
+/// 会員番号: 0 はゲスト、1 は SYSOP、2〜9 は予約、会員は 10 から
+pub const GUEST_ID: i64 = 0;
+pub const SYSOP_ID: i64 = 1;
+pub const FIRST_MEMBER_ID: i64 = 10;
+
 pub fn now() -> i64 {
     chrono::Utc::now().timestamp()
 }
@@ -16,8 +21,8 @@ pub fn ensure_defaults(c: &Connection) -> Result<()> {
     if find_user(c, "GUEST")?.is_none() {
         // pw_hash "!" はどのパスワードとも一致しない
         c.execute(
-            "INSERT INTO users (login, handle, pw_hash, level, created_at) VALUES ('GUEST', 'ゲスト', '!', 0, ?1)",
-            [now()],
+            "INSERT INTO users (id, login, handle, pw_hash, level, created_at) VALUES (?1, 'GUEST', 'ゲスト', '!', 0, ?2)",
+            params![GUEST_ID, now()],
         )?;
     }
     let boards: i64 = c.query_row("SELECT count(*) FROM boards", [], |r| r.get(0))?;
@@ -89,11 +94,58 @@ pub fn create_user(c: &Connection, login: &str, handle: &str, pw_hash: &str, lev
     if find_user(c, login)?.is_some() {
         bail!("ID {login} はすでに使われています");
     }
+    // SYSOP は 1 番が空いていれば 1 番。それ以外は 10 番以降の続き番号
+    let id = if level >= LEVEL_SYSOP && get_user(c, SYSOP_ID)?.is_none() {
+        SYSOP_ID
+    } else {
+        c.query_row("SELECT max(coalesce(max(id), 0), ?1 - 1) + 1 FROM users", [FIRST_MEMBER_ID], |r| r.get(0))?
+    };
     c.execute(
-        "INSERT INTO users (login, handle, pw_hash, level, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
-        params![login, handle, pw_hash, level, now()],
+        "INSERT INTO users (id, login, handle, pw_hash, level, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![id, login, handle, pw_hash, level, now()],
     )?;
-    Ok(c.last_insert_rowid())
+    Ok(id)
+}
+
+/// 既存の会員番号を「ゲスト 0 / 最初の SYSOP 1 / 他は 10〜」に振り直す (マイグレーション)
+pub fn renumber_users(c: &Connection) -> Result<()> {
+    let users: Vec<(i64, String, i64)> = {
+        let mut st = c.prepare("SELECT id, login, level FROM users ORDER BY id")?;
+        st.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?.collect::<rusqlite::Result<_>>()?
+    };
+    let sysop = users.iter().filter(|u| u.2 >= LEVEL_SYSOP && !u.1.eq_ignore_ascii_case("GUEST")).map(|u| u.0).min();
+    let mut next = FIRST_MEMBER_ID;
+    let map: Vec<(i64, i64)> = users
+        .iter()
+        .map(|(id, login, _)| {
+            let new = if login.eq_ignore_ascii_case("GUEST") {
+                GUEST_ID
+            } else if Some(*id) == sysop {
+                SYSOP_ID
+            } else {
+                next += 1;
+                next - 1
+            };
+            (*id, new)
+        })
+        .collect();
+    let refs = [
+        ("users", "id"),
+        ("posts", "author_id"),
+        ("read_marks", "user_id"),
+        ("mail", "from_id"),
+        ("mail", "to_id"),
+        ("access_log", "user_id"),
+        ("files", "uploader_id"),
+    ];
+    // 番号がぶつからないよう、いったん負の仮番号 (-新番号 - 1000) にしてから戻す
+    for (table, col) in refs {
+        for (old, new) in &map {
+            c.execute(&format!("UPDATE {table} SET {col} = ?2 WHERE {col} = ?1"), params![old, -new - 1000])?;
+        }
+        c.execute(&format!("UPDATE {table} SET {col} = -{col} - 1000 WHERE {col} <= -1000"), [])?;
+    }
+    Ok(())
 }
 
 pub fn record_login(c: &Connection, id: i64) -> Result<()> {
@@ -510,6 +562,39 @@ mod tests {
         mark_read(&c, b, free.id, 0).unwrap(); // 戻らない
         assert_eq!(read_mark(&c, b, free.id).unwrap(), 1);
         assert_eq!(posts_after(&c, free.id, 1).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn user_numbers() {
+        let c = db();
+        assert_eq!(find_user(&c, "GUEST").unwrap().unwrap().id, GUEST_ID);
+        assert_eq!(create_user(&c, "alice", "a", "x", LEVEL_MEMBER).unwrap(), 10);
+        assert_eq!(create_user(&c, "root", "r", "x", LEVEL_SYSOP).unwrap(), SYSOP_ID);
+        assert_eq!(create_user(&c, "bob", "b", "x", LEVEL_MEMBER).unwrap(), 11);
+        assert_eq!(create_user(&c, "sub", "s", "x", LEVEL_SYSOP).unwrap(), 12, "1 番が埋まっていたら続き番号");
+    }
+
+    #[test]
+    fn renumber_old_db() {
+        let mut c = Connection::open_in_memory().unwrap();
+        c.execute_batch(include_str!("../../migrations/001_init.sql")).unwrap();
+        c.execute_batch(include_str!("../../migrations/002_files.sql")).unwrap();
+        // 旧方式: ゲスト 1、会員 2, 3 (3 が SYSOP)
+        for (login, level) in [("GUEST", 0), ("alice", 10), ("root", 100)] {
+            c.execute("INSERT INTO users (login, handle, pw_hash, level, created_at) VALUES (?1, ?1, 'x', ?2, 0)", params![login, level]).unwrap();
+        }
+        add_board(&c, "B", "b", "", 0, 10).unwrap();
+        let alice = find_user(&c, "alice").unwrap().unwrap();
+        add_post(&mut c, 1, None, &alice, "t", "b").unwrap();
+        send_mail(&c, 2, 3, "s", "b").unwrap();
+        c.pragma_update(None, "foreign_keys", "OFF").unwrap(); // 本番のマイグレーションと同じ
+        renumber_users(&c).unwrap();
+        assert_eq!(find_user(&c, "GUEST").unwrap().unwrap().id, 0);
+        assert_eq!(find_user(&c, "root").unwrap().unwrap().id, 1);
+        assert_eq!(find_user(&c, "alice").unwrap().unwrap().id, 10);
+        let author: i64 = c.query_row("SELECT author_id FROM posts", [], |r| r.get(0)).unwrap();
+        let (from, to): (i64, i64) = c.query_row("SELECT from_id, to_id FROM mail", [], |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
+        assert_eq!((author, from, to), (10, 10, 1));
     }
 
     #[test]

@@ -62,7 +62,8 @@ pub async fn profile(term: &mut Term<'_>, ctx: &Ctx, user: &mut User) -> SResult
     ctx.hub.set_place(term.line_no(), "登録情報");
     loop {
         term.println(&format!(
-            "\n== 登録情報 ==\nID       : {}\nハンドル : {}\n登録日   : {}\nログイン : {} 回\n画面行数 : {}\n自己紹介 : {}\n\n1.ハンドル変更 2.パスワード変更 3.画面行数 4.自己紹介 Q.戻る",
+            "\n== 登録情報 ==\n会員番号 : {}\nID       : {}\nハンドル : {}\n登録日   : {}\nログイン : {} 回\n画面行数 : {}\n自己紹介 : {}\n\n1.ハンドル変更 2.パスワード変更 3.画面行数 4.自己紹介 Q.戻る",
+            user.id,
             user.login,
             user.handle,
             fmt_time(user.created_at),
