@@ -32,7 +32,7 @@ cp config.example.toml null-bbs.toml
 別の端末から接続します。
 
 ```sh
-telnet localhost 2323
+telnet localhost 5656
 ```
 
 最初に `NEW` で会員登録した人が SYSOP になります。

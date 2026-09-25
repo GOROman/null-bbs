@@ -73,13 +73,13 @@ impl Default for Limits {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct TcpConfig {
-    /// telnet で待ち受けるアドレス (平文なので既定はローカルのみ)
+    /// telnet で待ち受けるアドレス (既定は全インターフェースの 5656 番)
     pub listen: Vec<String>,
 }
 
 impl Default for TcpConfig {
     fn default() -> Self {
-        TcpConfig { listen: vec!["127.0.0.1:2323".into()] }
+        TcpConfig { listen: vec!["0.0.0.0:5656".into()] }
     }
 }
 
