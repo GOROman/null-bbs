@@ -22,6 +22,11 @@ login_attempts = 3
 # 手元だけで使うなら "127.0.0.1:5656" にする
 listen = ["0.0.0.0:5656"]
 
+[ws]
+# WebSocket (ブラウザのソフトウェアモデム null-modem などから)。
+# Cloudflare Tunnel などの中継から受ける想定なので既定はローカルのみ
+listen = ["127.0.0.1:5657"]
+
 # モデム回線 (必要な数だけ書く)
 # [[modem]]
 # line = 1                          # 回線番号 (1〜max_lines)

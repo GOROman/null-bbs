@@ -11,6 +11,7 @@ pub struct Config {
     pub bbs: BbsConfig,
     pub limits: Limits,
     pub tcp: TcpConfig,
+    pub ws: WsConfig,
     pub modem: Vec<ModemConfig>,
 }
 
@@ -80,6 +81,19 @@ pub struct TcpConfig {
 impl Default for TcpConfig {
     fn default() -> Self {
         TcpConfig { listen: vec!["0.0.0.0:5656".into()] }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct WsConfig {
+    /// WebSocket で待ち受けるアドレス (Cloudflare Tunnel などの中継から受ける想定なので既定はローカル)
+    pub listen: Vec<String>,
+}
+
+impl Default for WsConfig {
+    fn default() -> Self {
+        WsConfig { listen: vec!["127.0.0.1:5657".into()] }
     }
 }
 

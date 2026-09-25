@@ -9,7 +9,7 @@ use tokio_util::sync::CancellationToken;
 use crate::config::Config;
 use crate::db::Db;
 use crate::hub::Hub;
-use crate::line::{modem, tcp};
+use crate::line::{modem, tcp, ws};
 use crate::session::Ctx;
 use crate::{logbuf, tui};
 
@@ -28,6 +28,14 @@ pub async fn run(cfg: Config, headless: bool) -> Result<()> {
         tokio::spawn(async move {
             if let Err(e) = tcp::listen(addr.clone(), ctx, stop.clone()).await {
                 tracing::error!("TCP {addr} で待ち受けできません: {e:#}");
+            }
+        });
+    }
+    for addr in ctx.cfg.ws.listen.clone() {
+        let (ctx, stop) = (ctx.clone(), stop.clone());
+        tokio::spawn(async move {
+            if let Err(e) = ws::listen(addr.clone(), ctx, stop).await {
+                tracing::error!("WebSocket {addr} で待ち受けできません: {e:#}");
             }
         });
     }

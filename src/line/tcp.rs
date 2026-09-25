@@ -26,7 +26,7 @@ pub async fn serve(listener: TcpListener, ctx: Arc<Ctx>, stop: CancellationToken
             _ = stop.cancelled() => return Ok(()),
         };
         let _ = stream.set_nodelay(true);
-        let Some(no) = ctx.hub.alloc_tcp() else {
+        let Some(no) = ctx.hub.alloc(LineKind::Tcp) else {
             tracing::warn!("{peer}: 回線が満杯のため接続を断りました");
             tokio::spawn(async move {
                 let mut s = stream;

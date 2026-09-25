@@ -149,11 +149,11 @@ impl Hub {
         slots.get_mut(no.checked_sub(1)? as usize).map(f)
     }
 
-    /// TCP 用に空き回線を確保する
-    pub fn alloc_tcp(&self) -> Option<u16> {
+    /// TCP / WebSocket 用に空き回線を確保する
+    pub fn alloc(&self, kind: LineKind) -> Option<u16> {
         let mut slots = self.slots.lock().unwrap();
         let (i, slot) = slots.iter_mut().enumerate().find(|(_, s)| s.modem_path.is_none() && s.state == LineState::Free)?;
-        slot.kind = Some(LineKind::Tcp);
+        slot.kind = Some(kind);
         slot.state = LineState::Login;
         Some(i as u16 + 1)
     }
@@ -363,18 +363,18 @@ mod tests {
     #[test]
     fn alloc_skips_modem_lines() {
         let hub = Hub::new("T", 3, &[(1, "/dev/x".into())]);
-        assert_eq!(hub.alloc_tcp(), Some(2));
-        assert_eq!(hub.alloc_tcp(), Some(3));
-        assert_eq!(hub.alloc_tcp(), None);
+        assert_eq!(hub.alloc(LineKind::Tcp), Some(2));
+        assert_eq!(hub.alloc(LineKind::Tcp), Some(3));
+        assert_eq!(hub.alloc(LineKind::Tcp), None);
         hub.free_tcp(2);
-        assert_eq!(hub.alloc_tcp(), Some(2));
+        assert_eq!(hub.alloc(LineKind::Tcp), Some(2));
     }
 
     #[tokio::test]
     async fn telegram_and_chat() {
         let hub = Hub::new("T", 4, &[]);
-        let a = hub.alloc_tcp().unwrap();
-        let b = hub.alloc_tcp().unwrap();
+        let a = hub.alloc(LineKind::Tcp).unwrap();
+        let b = hub.alloc(LineKind::Tcp).unwrap();
         let (_ra, _) = hub.attach(LineInfo::new(a, LineKind::Tcp, "x"));
         let (mut rb, _) = hub.attach(LineInfo::new(b, LineKind::Tcp, "y"));
         hub.set_user(a, 1, "alice", "アリス");

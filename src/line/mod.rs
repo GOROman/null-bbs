@@ -6,6 +6,7 @@ pub mod modem;
 pub mod serial;
 pub mod tcp;
 pub mod telnet;
+pub mod ws;
 
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -34,6 +35,8 @@ pub enum OutCmd {
 pub enum LineKind {
     Tcp,
     Modem,
+    /// ブラウザのソフトウェアモデム (null-modem) などからの WebSocket
+    Ws,
 }
 
 impl LineKind {
@@ -41,6 +44,7 @@ impl LineKind {
         match self {
             LineKind::Tcp => "TCP",
             LineKind::Modem => "MODEM",
+            LineKind::Ws => "WS",
         }
     }
 }
