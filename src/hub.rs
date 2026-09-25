@@ -118,6 +118,8 @@ pub struct Hub {
     rooms: Mutex<BTreeMap<String, BTreeSet<u16>>>,
     pub started: Instant,
     pub calls: AtomicU32,
+    /// 管理画面から「今すぐ応答 (ATA)」を指示されたモデム回線
+    answer_requests: Mutex<BTreeSet<u16>>,
 }
 
 const NOTICE_CAP: usize = 64;
@@ -134,6 +136,7 @@ impl Hub {
             rooms: Mutex::new(BTreeMap::new()),
             started: Instant::now(),
             calls: AtomicU32::new(0),
+            answer_requests: Mutex::new(BTreeSet::new()),
         })
     }
 
@@ -162,6 +165,24 @@ impl Hub {
                 *s = Slot::empty(None);
             }
         });
+    }
+
+    /// モデム回線に、RING を待たずに応答 (ATA) するよう指示する
+    pub fn request_answer(&self, no: u16) -> Result<()> {
+        let v = self.snapshot().into_iter().find(|v| v.no == no);
+        match v {
+            Some(v) if v.kind == Some(LineKind::Modem) && matches!(v.state, LineState::Idle | LineState::Ringing) => {
+                self.answer_requests.lock().unwrap().insert(no);
+                Ok(())
+            }
+            Some(v) if v.kind == Some(LineKind::Modem) => bail!("CH{no:02} は{}のため応答できません", v.state.label()),
+            _ => bail!("CH{no:02} はモデム回線ではありません"),
+        }
+    }
+
+    /// 応答の指示があれば取り出す (モデム回線のタスクが呼ぶ)
+    pub fn take_answer_request(&self, no: u16) -> bool {
+        self.answer_requests.lock().unwrap().remove(&no)
     }
 
     pub fn set_state(&self, no: u16, state: LineState) {

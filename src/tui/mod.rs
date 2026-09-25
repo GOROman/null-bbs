@@ -254,7 +254,15 @@ impl App {
                 (KeyCode::Down, _) => self.sel.select_next(),
                 (KeyCode::PageUp, _) => self.sel.scroll_up_by(10),
                 (KeyCode::PageDown, _) => self.sel.scroll_down_by(10),
-                (_, Some('a')) => self.show_all = !self.show_all,
+                (_, Some('v')) => self.show_all = !self.show_all,
+                (_, Some('a')) => {
+                    if let Some(v) = self.selected_line() {
+                        self.message = match self.ctx.hub.request_answer(v.no) {
+                            Ok(()) => format!("CH{:02}: ATA で応答します", v.no),
+                            Err(e) => format!("{e:#}"),
+                        };
+                    }
+                }
                 (KeyCode::Enter, _) | (_, Some('m')) => {
                     if let Some(v) = self.selected_line() {
                         self.open_monitor(v.no);
@@ -437,7 +445,7 @@ fn draw(f: &mut Frame, app: &mut App) {
     }
 
     let keys = match app.screen {
-        Screen::Lines => "↑↓:選択 Enter:モニタ K:切断 B:全体放送 U:会員 O:ボード A:全回線 ?:ヘルプ Q:終了",
+        Screen::Lines => "↑↓:選択 Enter:モニタ A:応答(ATA) K:切断 B:全体放送 U:会員 O:ボード V:全回線 ?:ヘルプ Q:終了",
         Screen::Users => "↑↓:選択 B:利用停止/解除 L:レベル P:パスワード再設定 Esc:戻る",
         Screen::Boards => "↑↓:選択 A:追加 D:削除 Esc:戻る",
         Screen::Monitor(_) => "K:この回線を切断 B:全体放送 Esc:戻る",
@@ -499,7 +507,7 @@ fn draw_lines(f: &mut Frame, app: &mut App, area: Rect) {
         Constraint::Length(7),
         Constraint::Length(7),
     ];
-    let title = if app.show_all { " 回線 (全回線) " } else { " 回線 (使用中とモデム回線。A で全回線) " };
+    let title = if app.show_all { " 回線 (全回線) " } else { " 回線 (使用中とモデム回線。V で全回線) " };
     let table = Table::new(rows, widths)
         .header(Row::new(["CH", "種別", "ポート/接続元", "状態", "ID", "ハンドル", "速度", "場所", "時間", "RX", "TX"]).style(header_style()))
         .row_highlight_style(highlight())
@@ -667,11 +675,12 @@ fn draw_modal(f: &mut Frame, m: &Modal) {
                 " 回線画面",
                 "   ↑↓ / PgUp PgDn   回線を選ぶ",
                 "   Enter / M         選んだ回線の画面をモニタ",
+                "   A                 選んだモデム回線で今すぐ応答 (ATA)",
                 "   K                 選んだ回線を切断",
                 "   B                 全体放送",
                 "   U                 会員管理 (利用停止・レベル・パスワード)",
                 "   O                 ボード管理 (追加・削除)",
-                "   A                 全回線 / 使用中の回線だけ を切り替え",
+                "   V                 全回線 / 使用中の回線だけ を切り替え",
                 "   Q                 終了",
                 "",
                 " 何かキーを押すと閉じます",

@@ -203,8 +203,16 @@ async fn wait_call(cfg: &ModemConfig, ctx: &Ctx, conn: &mut Conn, lines: &mut Li
     let mut rings = 0u32;
     let mut last_ring: Option<Instant> = None;
     let mut answered_at: Option<Instant> = None;
+    // 前の着信待ちの間に出ていた古い指示は捨てる
+    ctx.hub.take_answer_request(no);
     loop {
         let line = lines.next(conn, Duration::from_secs(1)).await?;
+        if answered_at.is_none() && ctx.hub.take_answer_request(no) {
+            tracing::info!("CH{no:02}: 管理画面の指示で応答します");
+            send(conn, "ATA\r").await?;
+            answered_at = Some(Instant::now());
+            ctx.hub.set_state(no, LineState::Connecting);
+        }
         if let Some(t) = answered_at {
             if t.elapsed() > Duration::from_secs(cfg.connect_timeout_secs) {
                 tracing::info!("CH{no:02}: 接続できませんでした (タイムアウト)");
