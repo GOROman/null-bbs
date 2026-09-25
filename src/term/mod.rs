@@ -22,7 +22,7 @@ pub enum SessionError {
     IdleTimeout,
     #[error("接続時間の上限になりました")]
     TimeUp,
-    #[error("SYSOP により切断されました: {0}")]
+    #[error("{0}")]
     Kicked(String),
     /// 利用者が終了を選んだ
     #[error("ログオフ")]
