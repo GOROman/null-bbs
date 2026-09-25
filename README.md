@@ -49,3 +49,7 @@ telnet localhost 5656
 - [モデムで運用する](docs/modem.md)
 - [設計メモ](docs/design.md)
 
+
+## ライセンス
+
+MIT ライセンスです。詳しくは [LICENSE](LICENSE) を見てください。
